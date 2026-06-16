@@ -100,4 +100,61 @@ See [REPOS.md](REPOS.md).
 
 ---
 
+## Feature examples (two per capability)
+
+#### Realtime Gate.io trade ingest
+1. You restart the Gate backend after deploy and confirm JSON WebSocket shards subscribe to every enabled USDT pair in the fleet file.
+2. You watch a thin market during a listing pump and verify trades enter the per-symbol broadcast queue without blocking batch inserts.
+
+#### PostgreSQL analytics at fleet scale
+1. You open stats for a priority symbol you just viewed on the dashboard and confirm 24h OHLC, VWAP, and buy/sell split match the live tape.
+2. With ~700 pairs active, you confirm rotating stats cycles eventually refresh a quiet symbol you have not opened in an hour.
+
+#### Bootstrap cold start
+1. You load the Gate app after backend restart and pull bootstrap once — symbols, cached stats, and precision land in a single response.
+2. You add a new USDT market via the coins API and confirm bootstrap includes price and amount decimals after reload.
+
+#### WebSocket subscribe per symbol
+1. You switch from `BTCUSDT` to `DNXUSDT` on a per-coin page and send unsubscribe/subscribe so only the active pair’s stats update the hero.
+2. You connect two browser tabs on different symbols and confirm cross-symbol contamination is ignored server-side.
+
+#### WordPress schema sync
+1. You enable batched Schema.org push and watch plugin transients update after each rotating batch completes.
+2. You shrink batch size during a Hostinger CPU spike and confirm sync still advances through the full symbol universe over time.
+
+#### Node SSR for `/gate/{SYMBOL}/`
+1. You fetch SSR HTML for a crawler user-agent and confirm JSON-LD Dataset fields match the Python stats API for that pair.
+2. You compare SSR KPI strip with the live interactive app before shipping a new listing to the sitemap.
+
+#### Symbol reload and precision cache
+1. You trigger reload-symbols from wp-admin Coin Manager and confirm adds/removes appear in monitoring JSON and WebSocket tasks restart.
+2. You list a brand-new pair and confirm precision reload fetches full name and decimal rules before subscribe goes live.
+
+#### Dead symbols and fleet hygiene
+1. You diff dead symbols against the exchange and remove a delisted market from the fleet before it clogs sitemap generation.
+2. You cross-check symbol status API with the Coin Manager grid and investigate any pair stuck in blocked state.
+
+#### Operator ops dashboard
+1. You open the static ops UI on the backend host and watch throughput, latency, and compression ratio without mixing admin traffic into the public tape.
+2. You tail dashboard logs during an auth failure and see connect, bulk subscribe, and reject lines without per-trade spam.
+
+#### Priority stats queue
+1. You poll memory stats for a symbol you are actively viewing and confirm it jumps to the front of the calculator priority queue.
+2. You leave a popular pair open in a browser tab during volatile hours and confirm its stats refresh ahead of the rotating fleet slice.
+
+#### REST trade history backfill
+1. You request recent trades for a symbol when WebSocket is degraded and seed the hero price from REST until live prints resume.
+2. You use trade history to verify the largest print metadata shown in the 24h stats panel matches database rows.
+
+#### Monitoring REST fallback
+1. Plugin admin cannot open dashboard WebSockets and falls back to monitoring JSON for messages-per-second and client counts.
+2. You record baseline monitoring output before a Gate maintenance window and compare after reconnect.
+
+#### Coin list CRUD
+1. You POST a new symbol to the tracked list and confirm the Python coin file updates without duplicating existing entries.
+2. You DELETE a retired symbol and confirm the next reload drops it from active WebSocket shards.
+
+
+---
+
 **Made by [Logic Encoder](https://logicencoder.com)** · [GitHub](https://github.com/logicencoder) · [Contact](https://logicencoder.com/contact/)
