@@ -80,13 +80,13 @@ With **~700 pairs**, the stats calculator cannot recompute every symbol every se
 
 **[mexc_trading_app](https://github.com/logicencoder/mexc_trading_app-overview)** is a separate local trading console with order placement. This backend ingests **public Gate.io spot trades only** for the Logic Encoder stats site — no order execution, no withdrawal APIs.
 
-## Shared hosting headroom (corroboration)
+## Shared hosting headroom
 
 The public site lives on **WordPress shared hosting**. That environment is ideal for pages, shortcodes, sitemaps, and cached HTML — not for subscribing to hundreds of USDT markets and writing millions of trades. This backend exists so **all heavy work stays off PHP**: persistent exchange sockets, deduplication, PostgreSQL, stats recomputation, MessagePack fan-out, Schema.org batch sync, and SSR data bundles run on **self-hosted Linux servers** with async workers, then push compact results to WordPress.
 
 **Roughly 700 Gate.io USDT pairs** stream through this pipeline; the parallel MEXC backend carries **1,400+**. Realtime data still reaches browsers over WebSocket; REST and WordPress transients cover networks that block WS. WordPress remains a **display, routing, and SEO layer** — not the database of record for ticks.
 
-After iteratively offloading ingest, batching writes, and narrowing what PHP regenerates on each request, shared-hosting resource graphs show large margins on CPU, memory, PHP workers, throughput, IOPS, and process limits — **corroboration below**.
+After iteratively offloading ingest, batching writes, and narrowing what PHP regenerates on each request, shared-hosting resource graphs show large margins on CPU, memory, PHP workers, throughput, IOPS, and process limits.
 
 ![Shared hosting — CPU and memory usage vs plan limits](assets/hostinger-cpu-memory.jpg)
 
