@@ -100,7 +100,7 @@ See [REPOS.md](REPOS.md).
 
 ---
 
-## Feature examples (two per capability)
+## Operator workflows
 
 #### Realtime Gate.io trade ingest
 1. You restart the Gate backend after deploy and confirm JSON WebSocket shards subscribe to every enabled USDT pair in the fleet file.
