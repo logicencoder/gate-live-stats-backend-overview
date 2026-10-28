@@ -1,160 +1,61 @@
-# Gate.io Live Stats — backend
+# Gate Live Statistics — Market Data Service
 
-**FastAPI + PostgreSQL + Node SSR backend** for [logicencoder.com/gate-app/](https://logicencoder.com/gate-app/) and every **[/gate/{SYMBOL}/](https://logicencoder.com/gate/)** SEO page. The private service ingests Gate.io spot trades over JSON WebSockets, stores rolling history, computes 24h pair analytics, broadcasts live updates to browsers, and pushes Schema.org bundles to WordPress. Traders see the dashboard through the plugin; this repo documents the server-side half of that product pair.
+Following several Gate markets becomes easier when the latest activity and the surrounding daily statistics can be examined in one place. Gate Live Statistics supplies a connected market catalogue, pair views and publishing information for that research routine.
+
+Visitors can move from the collection to a selected market, while operators keep the tracked markets and their public presentation aligned.
 
 ## Tech stack
 
 | Layer | Technologies |
-|-------|--------------|
-| Ingest | Python 3, FastAPI, uvicorn, Gate.io spot WebSocket (JSON), async workers |
-| Storage | PostgreSQL, batched async inserts, rolling-window retention |
-| Realtime | WebSocket with MessagePack frames (`gateio_trade`, `gateio_stats`), per-symbol subscription rooms |
-| Analytics | SQL aggregates — 24h OHLC, volume splits, trade-size tiers, hourly buckets, bot-activity heuristics |
-| WordPress sync | Batched Schema.org JSON push to plugin cache-warmup REST |
-| SSR service | Node.js, Express, React server render for crawler HTML + JSON-LD |
-| Ops | Operator dashboard WebSockets, monitoring REST, symbol reload API, static ops UI |
-| Hosting | Self-hosted Linux server for compute; WordPress on shared hosting for public pages |
+|---|---|
+| Application | Python, FastAPI |
+| Market data | Gate.io |
+| Analytics | PostgreSQL |
+| Web presentation | JavaScript, Node.js, React |
+| Publishing | WordPress |
 
-## Realtime trade ingest
+## Explore the tracked markets
 
-The service maintains long-lived **Gate.io spot WebSocket** connections — one or more shards depending on fleet size, each subscribed to a chunk of USDT pairs. Incoming deal messages use Gate.io’s JSON shape (`currency_pair`, `price`, `amount`, `side`, `create_time_ms`); each tick is normalized to database format (`BTCUSDT`), deduplicated with a generated **trade id**, and **queued for batch insert** so the hot path never blocks on per-tick disk writes.
+The service follows supported Gate spot markets and keeps their names and precision connected to the published information. Catalogue controls support reviewing the collection and refreshing its supported pairs.
 
-Broadcast to browsers happens **immediately** from the ingest path: trades enter a per-symbol FIFO queue with throttling so bandwidth spreads smoothly without dropping prints. USDT notional is computed at ingest time. **Exchange precision and full names** are cached from the Gate.io API and exposed through bootstrap so the WordPress UI formats prices and amounts correctly.
+This provides a useful starting point whether the visitor wants a broad comparison or has already chosen a particular market to examine.
 
-Pair list reload is **operator-triggered only** — a manual reload restarts WebSocket shards, loads precision for newly listed symbols, and avoids flapping subscriptions on every deploy. Stale rows fall out of the configured rolling window so queries and SSR builds stay bounded. **Roughly 700 USDT spot pairs** run on the live Gate fleet today.
+## Connect trades with daily context
 
-## PostgreSQL analytics and REST
+Recent trades are accompanied by daily open, high, low and volume information. Buy/sell balance, trade counts, VWAP, trade-size distributions, notable trades and hourly activity support a more detailed investigation.
 
-Trades land in PostgreSQL. Background workers run **optimized CTE queries** per symbol to recompute **24h open, high, low, volumes** in base asset and USDT, **buy/sell imbalance**, trade-count ratios, **VWAP**, volatility hints, **trade-size histograms** (small / medium / large tiers), largest-print metadata, average interval between prints, and **hourly buckets** for charts. Results populate an in-memory stats cache consumed by WebSocket broadcasts and REST.
+Each view adds a different part of the picture. Read the latest activity alongside its period and market context rather than treating a single print as an explanation of the whole session.
 
-Public and operator clients use REST for:
+## Stay focused on the selected pair
 
-- **Bootstrap** — full symbol list, cached stats snapshot, and per-symbol precision metadata in one response for dashboard cold start.
-- **Per-symbol memory stats** — fast path when a visitor switches pairs; also feeds a **priority queue** so actively viewed symbols recalculate sooner in large fleets.
-- **Recent trades** — rolling-window history for tape backfill and hero price seeding when WebSocket has not printed yet.
-- **Symbol status** — which pairs are live, idle, or never traded — mirrored in wp-admin Coin Manager.
-- **Dead symbols** — diff against the exchange so operators prune delisted markets from sitemap and fleet lists.
-- **Coin list CRUD** — add/remove tracked symbols from the server-side list; removals trigger connection reload.
-- **Monitoring** — connection counts, throughput, queue depth, and health JSON for the plugin Monitor Dashboard.
+Live market views follow the pair the visitor is examining. Changing the selection brings the corresponding statistics and activity into focus within the same experience.
 
-Browsers open MessagePack WebSockets for live streams; the WordPress plugin proxies some admin calls while public clients connect directly for realtime data.
+The market catalogue supports returning to familiar pairs as well as discovering another one worth a closer look. Pair-level context remains visible throughout that task.
 
-## WebSocket broadcast
+## Keep a larger catalogue useful
 
-Browser clients authenticate with an API key when required, then receive **MessagePack-compressed** frames. Trade frames use type **`gateio_trade`**; periodic aggregate refreshes use **`gateio_stats`**. Clients send **subscribe / unsubscribe** actions so only the active pair’s stats and trades update headline panels — cross-symbol contamination is ignored server-side.
+The tracked collection can contain more markets than a visitor needs at once. Operators can inspect the supported set, identify missing metadata and review unavailable entries when maintaining it.
 
-An internal broadcast queue fans normalized frames to every session in a symbol room. **Operator dashboards** use separate dashboard sockets for throughput, latency, compression ratio, and structured boot logs without mixing admin traffic into the public tape. Server-wide stats broadcasts give wp-admin Monitor cards messages-per-second, download rate, reconnect counts, and PostgreSQL totals.
+That work helps the public catalogue stay connected to the markets the service actually follows, rather than becoming an unexplained list of stale symbols.
 
-## WordPress schema sync
+## Support public discovery and publishing
 
-Unlike the MEXC pipeline’s disk snapshot POST pattern, Gate.io SEO leans on **live SSR through WordPress routing** plus **batched Schema.org pushes**. A background task walks the stats cache in rotating batches and POSTs structured **`Dataset` JSON-LD**, optional full names, and symbol keys to the WordPress plugin **cache-warmup** REST route with an API key header. WordPress stores transients the plugin and social previews can read without recomputing analytics in PHP.
+Interactive browsing and search-friendly market pages present the same underlying market context through different entry points. Structured discovery information and related links help pair pages fit the wider WordPress site.
 
-Operators enable or tune batch size and interval via environment configuration. After a symbol reload or large listing batch, sync keeps plugin-side caches aligned with the authoritative server fleet.
+The companion plugin supplies the visitor-facing interface and administration areas. The service maintains the market observations and analytics behind those pages.
 
-## Node SSR for SEO pages
+## Find the part that needs attention
 
-A companion **Express + React SSR** process renders crawler HTML for **`/gate/{SYMBOL}/`** pages: KPI strip, bot-activity section, 24h hourly table, JSON-LD block, and internal links. SSR fetches the same Python API bundles the live dashboard uses, so search snippets reflect computed fields rather than static marketing copy. WordPress **`template_redirect`** serves SSR HTML to crawlers; regular visitors stay on the interactive **`/gate-app/`** shell unless a test flag forces SSR.
+Operating views bring connection health, activity, subscriptions, connected visitors and publishing outcomes together. Logs provide the context needed when a market page appears quiet or out of date.
 
-Debug routes on the SSR service help operators validate a single symbol’s HTML structure before shipping a new listing — the same checks wp-admin Schema validation exercises from the plugin.
+The operator can distinguish collection problems from delivery or catalogue issues before deciding which part of the installation needs intervention.
 
-## Symbol fleet and precision management
-
-**Pair discovery** pulls USDT markets from Gate.io APIs and optional operator-maintained coin files. Before subscribe, symbols pass **existence validation** so dead markets never wedge a connection shard. **Precision reload** fetches price and amount decimals plus **full names** for any symbol missing from cache.
-
-Manual **`reload-symbols`** compares the new fleet to the active set, logs adds/removes, cancels old WebSocket tasks, and starts fresh shards — the workflow Coin Manager’s **Reload symbols on server** button triggers. Stats calculation uses **rotation across the full universe** when symbol count exceeds per-cycle limits, while **priority symbols** (recently viewed on the dashboard) and **actively subscribed pairs** refresh first.
-
-## Operator surfaces
-
-- **Static ops dashboard** — browser UI on the backend host for at-a-glance Gate connection health (same family as the MEXC ops dashboard).
-- **Dashboard WebSocket** — live throughput, latency min/avg, compression ratio, subscription room counts.
-- **Dashboard logs WebSocket** — filtered connection lifecycle (connect, auth, bulk subscribe) without per-trade spam.
-- **Monitoring REST** — JSON snapshot for plugin AJAX when admin sockets are unavailable.
-
-Operators diagnose “stale public site” from wp-admin Monitor without SSH; compute runs on the self-hosted server while WordPress serves the public shell.
-
-## Stats engine behaviour at fleet scale
-
-With **~700 pairs**, the stats calculator cannot recompute every symbol every second. Each cycle caps how many symbols run heavy SQL, prioritizing **dashboard-polled symbols**, **WebSocket-subscribed pairs**, and a **rotating slice** of the rest so the full universe catches up over time. Results merge into the stats cache and emit **`gateio_stats`** frames to subscribed clients on a throttle per symbol — matching the live app’s 24h panels, bot scores, and hourly chart without polling REST on every tick.
-
-## Shared hosting headroom
-
-The public site lives on **WordPress shared hosting** — ideal for pages, shortcodes, sitemaps, and cached HTML. This backend runs the heavy path on **self-hosted Linux**: persistent exchange sockets, deduplication, PostgreSQL, stats recomputation, MessagePack fan-out, Schema.org batch sync, and SSR data bundles, then pushes compact results to WordPress.
-
-**Roughly 700 Gate.io USDT pairs** stream through this pipeline; the parallel MEXC backend carries **1,400+**. Realtime data still reaches browsers over WebSocket; REST and WordPress transients cover networks that block WS. WordPress is the **display, routing, and SEO layer**; tick history lives in PostgreSQL on the backend.
-
-After iteratively offloading ingest, batching writes, and narrowing what PHP regenerates on each request, shared-hosting resource graphs show large margins on CPU, memory, PHP workers, throughput, IOPS, and process limits.
-
-![Shared hosting — CPU and memory usage vs plan limits](assets/hostinger-cpu-memory.jpg)
-
-![Shared hosting — disk throughput and PHP worker count](assets/hostinger-throughput-workers.jpg)
-
-![Shared hosting — storage IOPS and max processes](assets/hostinger-iops-processes.jpg)
+---
 
 Private code: [gate-live-stats-backend](https://github.com/logicencoder/gate-live-stats-backend)
 
-Plugin overview: [gate-live-stats-plugin-overview](https://github.com/logicencoder/gate-live-stats-plugin-overview)
+[Gate WordPress dashboard](https://github.com/logicencoder/gate-live-stats-plugin-overview)
 
-Sibling backend (MEXC exchange feed): [mexc-live-stats-backend-overview](https://github.com/logicencoder/mexc-live-stats-backend-overview)
+See [REPOS.md](REPOS.md) for related repositories.
 
-See [REPOS.md](REPOS.md).
-
----
-
-## Operator workflows
-
-#### Realtime Gate.io trade ingest
-1. You restart the Gate backend after deploy and confirm JSON WebSocket shards subscribe to every enabled USDT pair in the fleet file.
-2. You watch a thin market during a listing pump and verify trades enter the per-symbol broadcast queue without blocking batch inserts.
-
-#### PostgreSQL analytics at fleet scale
-1. You open stats for a priority symbol you just viewed on the dashboard and confirm 24h OHLC, VWAP, and buy/sell split match the live tape.
-2. With ~700 pairs active, you confirm rotating stats cycles eventually refresh a quiet symbol you have not opened in an hour.
-
-#### Bootstrap cold start
-1. You load the Gate app after backend restart and pull bootstrap once — symbols, cached stats, and precision land in a single response.
-2. You add a new USDT market via the coins API and confirm bootstrap includes price and amount decimals after reload.
-
-#### WebSocket subscribe per symbol
-1. You switch from `BTCUSDT` to `DNXUSDT` on a per-coin page and send unsubscribe/subscribe so only the active pair’s stats update the hero.
-2. You connect two browser tabs on different symbols and confirm cross-symbol contamination is ignored server-side.
-
-#### WordPress schema sync
-1. You enable batched Schema.org push and watch plugin transients update after each rotating batch completes.
-2. You shrink batch size during a Hostinger CPU spike and confirm sync still advances through the full symbol universe over time.
-
-#### Node SSR for `/gate/{SYMBOL}/`
-1. You fetch SSR HTML for a crawler user-agent and confirm JSON-LD Dataset fields match the Python stats API for that pair.
-2. You compare SSR KPI strip with the live interactive app before shipping a new listing to the sitemap.
-
-#### Symbol reload and precision cache
-1. You trigger reload-symbols from wp-admin Coin Manager and confirm adds/removes appear in monitoring JSON and WebSocket tasks restart.
-2. You list a brand-new pair and confirm precision reload fetches full name and decimal rules before subscribe goes live.
-
-#### Dead symbols and fleet hygiene
-1. You diff dead symbols against the exchange and remove a delisted market from the fleet before it clogs sitemap generation.
-2. You cross-check symbol status API with the Coin Manager grid and investigate any pair stuck in blocked state.
-
-#### Operator ops dashboard
-1. You open the static ops UI on the backend host and watch throughput, latency, and compression ratio without mixing admin traffic into the public tape.
-2. You tail dashboard logs during an auth failure and see connect, bulk subscribe, and reject lines without per-trade spam.
-
-#### Priority stats queue
-1. You poll memory stats for a symbol you are actively viewing and confirm it jumps to the front of the calculator priority queue.
-2. You leave a popular pair open in a browser tab during volatile hours and confirm its stats refresh ahead of the rotating fleet slice.
-
-#### REST trade history backfill
-1. You request recent trades for a symbol when WebSocket is degraded and seed the hero price from REST until live prints resume.
-2. You use trade history to verify the largest print metadata shown in the 24h stats panel matches database rows.
-
-#### Monitoring REST fallback
-1. Plugin admin cannot open dashboard WebSockets and falls back to monitoring JSON for messages-per-second and client counts.
-2. You record baseline monitoring output before a Gate maintenance window and compare after reconnect.
-
-#### Coin list CRUD
-1. You POST a new symbol to the tracked list and confirm the Python coin file updates without duplicating existing entries.
-2. You DELETE a retired symbol and confirm the next reload drops it from active WebSocket shards.
-
-
----
-
-**Made by [Logic Encoder](https://logicencoder.com)** · [GitHub](https://github.com/logicencoder) · [Contact](https://logicencoder.com/contact/)
+**[Logic Encoder](https://logicencoder.com)** · [GitHub](https://github.com/logicencoder) · [Contact](https://logicencoder.com/contact/)
